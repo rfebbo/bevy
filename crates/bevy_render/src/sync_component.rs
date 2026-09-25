@@ -52,7 +52,12 @@ impl<C: SyncComponent<F>, F: Send + Sync + 'static> Plugin for SyncComponentPlug
         app.world_mut()
             .register_component_hooks::<C>()
             .on_remove(|mut world, context| {
-                let mut pending = world.resource_mut::<PendingSyncEntity>();
+                // No render world, nothing to keep in step: an app built with no graphics backend
+                // (a headless server, a test) never gets `SyncWorldPlugin`, and removing a light or a
+                // camera setting there used to panic on the missing resource.
+                let Some(mut pending) = world.get_resource_mut::<PendingSyncEntity>() else {
+                    return;
+                };
                 pending.push(EntityRecord::ComponentRemoved(
                     context.entity,
                     |mut entity| {
