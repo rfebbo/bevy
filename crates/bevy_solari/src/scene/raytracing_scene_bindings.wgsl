@@ -49,7 +49,9 @@ struct Material {
     perceptual_roughness: f32,
     emissive: vec3<f32>,
     metallic: f32,
-    _padding: vec3<f32>,
+    alpha_cutoff: f32,
+    diffuse_transmission: f32,
+    _padding: f32,
     reflectance: f32,
 }
 
@@ -99,8 +101,44 @@ fn trace_ray(ray_origin: vec3<f32>, ray_direction: vec3<f32>, ray_t_min: f32, ra
     let ray = RayDesc(ray_flag, RAY_NO_CULL, ray_t_min, ray_t_max, ray_origin, ray_direction);
     var rq: ray_query;
     rayQueryInitialize(&rq, tlas, ray);
-    rayQueryProceed(&rq);
+    // Opaque geometry is committed by the hardware; only triangles of an alpha-tested mesh
+    // (`Mesh::raytracing_alpha_tested`) come back here as candidates, to be tested and kept or passed.
+    while rayQueryProceed(&rq) {
+        let candidate = rayQueryGetCandidateIntersection(&rq);
+        if candidate_is_solid(candidate, ray_direction) {
+            rayQueryConfirmIntersection(&rq);
+        }
+    }
     return rayQueryGetCommittedIntersection(&rq);
+}
+
+// Does an alpha-tested triangle stop this ray? Not where its base color texture's alpha is below
+// the cutoff (the gaps in a cut-out card), and, where it is solid, not for a `diffuse_transmission`
+// fraction of rays: stochastic translucency, which the temporal and spatial reuse average into light
+// through a leaf.
+fn candidate_is_solid(hit: RayIntersection, ray_direction: vec3<f32>) -> bool {
+    let material = materials[material_ids[hit.instance_index]];
+    if material.base_color_texture_id != TEXTURE_MAP_NONE {
+        let barycentrics = vec3(1.0 - hit.barycentrics.x - hit.barycentrics.y, hit.barycentrics);
+        let vertices = load_vertices(geometry_ids[hit.instance_index], hit.primitive_index);
+        let uv = mat3x2(vertices[0].uv, vertices[1].uv, vertices[2].uv) * barycentrics;
+        let id = material.base_color_texture_id;
+        if textureSampleLevel(textures[id], samplers[id], uv, 0.0).a < material.alpha_cutoff {
+            return false;
+        }
+    }
+    if material.diffuse_transmission > 0.0 {
+        let d = bitcast<vec3<u32>>(ray_direction);
+        let h = hash_u32(bitcast<u32>(hit.t) ^ hash_u32(hit.primitive_index ^ hash_u32(d.x ^ hash_u32(d.y ^ hash_u32(d.z)))));
+        return f32(h >> 8u) * (1.0 / 16777216.0) >= material.diffuse_transmission;
+    }
+    return true;
+}
+
+fn hash_u32(v: u32) -> u32 {
+    let state = v * 747796405u + 2891336453u;
+    let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
 }
 
 fn sample_texture(id: u32, uv: vec2<f32>) -> vec3<f32> {

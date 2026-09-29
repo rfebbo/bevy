@@ -7,6 +7,7 @@ use bevy_ecs::{
     system::{Query, Res, ResMut},
 };
 use bevy_math::{ops::cos, Mat4, Vec3};
+use bevy_material::AlphaMode;
 use bevy_pbr::{
     DfgLut, ExtractedDirectionalLight, MeshMaterial3d, PreviousGlobalTransform, StandardMaterial,
 };
@@ -133,6 +134,11 @@ pub fn prepare_raytracing_scene_bindings(
             emissive: material.emissive.to_vec3(),
             metallic: material.metallic,
             reflectance: material.reflectance,
+            alpha_cutoff: match material.alpha_mode {
+                AlphaMode::Mask(cutoff) => cutoff,
+                _ => 0.0,
+            },
+            diffuse_transmission: material.diffuse_transmission,
             _padding: Default::default(),
         });
 
@@ -392,7 +398,11 @@ struct GpuMaterial {
     perceptual_roughness: f32,
     emissive: Vec3,
     metallic: f32,
-    _padding: Vec3,
+    /// Only read for an alpha-tested mesh (`Mesh::raytracing_alpha_tested`).
+    alpha_cutoff: f32,
+    /// The fraction of rays an alpha-tested surface lets through where it is solid.
+    diffuse_transmission: f32,
+    _padding: f32,
     reflectance: f32,
 }
 

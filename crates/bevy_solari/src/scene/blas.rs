@@ -57,12 +57,12 @@ pub fn prepare_raytracing_blas(
         .extracted
         .iter()
         .filter(|(_, mesh)| is_mesh_raytracing_compatible(mesh))
-        .map(|(asset_id, _)| {
+        .map(|(asset_id, mesh)| {
             let vertex_slice = mesh_allocator.mesh_vertex_slice(asset_id).unwrap();
             let index_slice = mesh_allocator.mesh_index_slice(asset_id).unwrap();
 
             let (blas, blas_size) =
-                allocate_blas(&vertex_slice, &index_slice, asset_id, &render_device);
+                allocate_blas(&vertex_slice, &index_slice, asset_id, mesh.raytracing_alpha_tested, &render_device);
 
             blas_manager.blas.insert(*asset_id, blas);
             blas_manager
@@ -145,6 +145,7 @@ fn allocate_blas(
     vertex_slice: &MeshBufferSlice,
     index_slice: &MeshBufferSlice,
     asset_id: &AssetId<Mesh>,
+    alpha_tested: bool,
     render_device: &RenderDevice,
 ) -> (Blas, BlasTriangleGeometrySizeDescriptor) {
     let blas_size = BlasTriangleGeometrySizeDescriptor {
@@ -152,7 +153,12 @@ fn allocate_blas(
         vertex_count: vertex_slice.range.len() as u32,
         index_format: Some(IndexFormat::Uint32),
         index_count: Some(index_slice.range.len() as u32),
-        flags: AccelerationStructureGeometryFlags::OPAQUE,
+        // Not opaque: rays stop at its triangles as candidates, and `trace_ray` alpha-tests them.
+        flags: if alpha_tested {
+            AccelerationStructureGeometryFlags::empty()
+        } else {
+            AccelerationStructureGeometryFlags::OPAQUE
+        },
     };
 
     let blas = render_device.wgpu_device().create_blas(

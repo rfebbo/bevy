@@ -254,6 +254,13 @@ pub struct Mesh {
     /// Does nothing if not used with `bevy_solari`, or if the mesh is not compatible
     /// with `bevy_solari` (see `bevy_solari`'s docs).
     pub enable_raytracing: bool,
+    /// Whether `bevy_solari` should alpha-test this mesh's triangles against its material's
+    /// base color texture (`AlphaMode::Mask`), and let `diffuse_transmission` of the light through.
+    ///
+    /// Off by default: an alpha-tested BLAS is built without the `OPAQUE` flag, so every ray that
+    /// meets one of its triangles runs a shader to decide, which is a real cost on opaque geometry
+    /// and only worth paying for cut-out cards (foliage, fences, grilles).
+    pub raytracing_alpha_tested: bool,
     /// Precomputed min and max extents of the mesh position data. Used mainly for constructing `Aabb`s for frustum culling.
     /// This data will be set if/when a mesh is extracted to the GPU
     pub final_aabb: Option<Aabb3d>,
@@ -349,6 +356,7 @@ impl Mesh {
             morph_target_names: MeshExtractableData::NoData,
             asset_usage,
             enable_raytracing: true,
+            raytracing_alpha_tested: false,
             final_aabb: None,
             skinned_mesh_bounds: None,
         }
