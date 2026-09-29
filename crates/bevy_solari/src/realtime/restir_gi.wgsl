@@ -9,7 +9,7 @@ enable wgpu_ray_query;
 #import bevy_solari::brdf::evaluate_diffuse_brdf
 #import bevy_solari::gbuffer_utils::{gpixel_resolve, pixel_dissimilar, permute_pixel}
 #import bevy_solari::sampling::{sample_random_light, trace_point_visibility, balance_heuristic, isnan}
-#import bevy_solari::scene_bindings::{trace_ray, resolve_ray_hit_full, RAY_T_MIN, RAY_T_MAX}
+#import bevy_solari::scene_bindings::{trace_ray, resolve_ray_hit_full, sky_radiance, RAY_T_MIN, RAY_T_MAX, SKY_SAMPLE_DISTANCE}
 #import bevy_solari::world_cache::{query_world_cache, WORLD_CACHE_CELL_LIFETIME}
 #import bevy_solari::realtime_bindings::{view_output, gi_reservoirs_a, gi_reservoirs_b, gbuffer, depth_buffer, motion_vectors, previous_gbuffer, previous_depth_buffer, view, previous_view, constants, Reservoir}
 #import bevy_solari::specular_gi::DIFFUSE_GI_REUSE_ROUGHNESS_THRESHOLD
@@ -94,6 +94,16 @@ fn generate_initial_reservoir(world_position: vec3<f32>, world_normal: vec3<f32>
     let ray = trace_ray(world_position + (world_normal * RAY_T_MIN), ray_direction, RAY_T_MIN, RAY_T_MAX, RAY_FLAG_NONE);
 
     if ray.kind == RAY_QUERY_INTERSECTION_NONE {
+        // Out to the sky: a sample point far along the ray, facing back down it.
+        let radiance = sky_radiance(ray_direction);
+        if all(radiance == vec3(0.0)) {
+            return reservoir;
+        }
+        reservoir.sample_point_world_position = world_position + ray_direction * SKY_SAMPLE_DISTANCE;
+        reservoir.sample_point_world_normal = -ray_direction;
+        reservoir.radiance = radiance;
+        reservoir.confidence_weight = 1.0;
+        reservoir.unbiased_contribution_weight = uniform_hemisphere_inverse_pdf();
         return reservoir;
     }
 

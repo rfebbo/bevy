@@ -2,10 +2,11 @@ enable wgpu_ray_query;
 
 #import bevy_core_pipeline::tonemapping::tonemapping_luminance as luminance
 #import bevy_pbr::utils::{rand_f, rand_range_u, sample_cosine_hemisphere}
+#import bevy_render::maths::PI
 #import bevy_render::view::View
 #import bevy_solari::presample_light_tiles::{ResolvedLightSamplePacked, unpack_resolved_light_sample}
 #import bevy_solari::sampling::{calculate_resolved_light_contribution, trace_light_visibility}
-#import bevy_solari::scene_bindings::{trace_ray, resolve_ray_hit_full, RAY_T_MIN}
+#import bevy_solari::scene_bindings::{trace_ray, resolve_ray_hit_full, sky_radiance, RAY_T_MIN}
 #import bevy_solari::world_cache::{
     WORLD_CACHE_MAX_TEMPORAL_SAMPLES,
     WORLD_CACHE_DIRECT_LIGHT_SAMPLE_COUNT,
@@ -58,6 +59,10 @@ fn sample_gi(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(global_inv
         let cell_life = atomicLoad(&world_cache_life[cell_index]);
         let radiance = query_world_cache(ray_hit.world_position, ray_hit.geometric_world_normal, view.world_position, ray.t, cell_life, &rng);
         world_cache_active_cells_new_radiance[active_cell_id.x] += ray_hit.material.base_color * radiance;
+    } else {
+        // Cosine-sampled, so the sky's irradiance estimate is π times its radiance. A miss within the
+        // cache's shorter reach is taken as sky, which outdoors it nearly always is.
+        world_cache_active_cells_new_radiance[active_cell_id.x] += PI * sky_radiance(ray_direction);
     }
 }
 

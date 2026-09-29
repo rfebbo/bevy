@@ -91,6 +91,26 @@ const LIGHT_NOT_PRESENT_THIS_FRAME = 0xFFFFFFFFu;
 @group(0) @binding(12) var<storage> previous_frame_light_id_translations: array<u32>;
 @group(0) @binding(13) var brdf_dfg_lut: texture_2d<f32>;
 @group(0) @binding(14) var brdf_dfg_lut_sampler: sampler;
+@group(0) @binding(15) var<storage> sky: Sky;
+
+struct Sky {
+    zenith: vec4<f32>,
+    horizon: vec4<f32>,
+    ground: vec4<f32>,
+}
+
+// The light arriving along a ray that left the scene (`SolariSky`): horizon to zenith above, the
+// ground's below. Black unless the app sets one.
+fn sky_radiance(direction: vec3<f32>) -> vec3<f32> {
+    if direction.y < 0.0 {
+        return sky.ground.rgb;
+    }
+    return mix(sky.horizon.rgb, sky.zenith.rgb, sqrt(direction.y));
+}
+
+// Where a ReSTIR GI sample of the sky is put: along its ray, far enough that moving the shading point
+// across a neighbourhood leaves its direction unchanged, inside RAY_T_MAX for the visibility ray.
+const SKY_SAMPLE_DISTANCE = 10000.0f;
 
 const RAY_T_MIN = 0.001f;
 const RAY_T_MAX = 100000.0f;

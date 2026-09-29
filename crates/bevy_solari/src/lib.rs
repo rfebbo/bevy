@@ -18,7 +18,7 @@ pub mod scene;
 pub mod prelude {
     pub use super::SolariPlugins;
     pub use crate::realtime::SolariLighting;
-    pub use crate::scene::RaytracingMesh3d;
+    pub use crate::scene::{RaytracingMesh3d, SolariSky};
 }
 
 use crate::realtime::SolariLightingPlugin;

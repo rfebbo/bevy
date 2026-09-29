@@ -5,7 +5,7 @@ mod types;
 
 use bevy_shader::load_shader_library;
 pub use binder::RaytracingSceneBindings;
-pub use types::RaytracingMesh3d;
+pub use types::{RaytracingMesh3d, SolariSky};
 
 use crate::SolariPlugins;
 use bevy_app::{App, Plugin};
@@ -48,7 +48,10 @@ impl Plugin for RaytracingScenePlugin {
             return;
         }
 
-        app.add_plugins(ExtractResourcePlugin::<StandardMaterialAssets>::default());
+        app.add_plugins((
+            ExtractResourcePlugin::<StandardMaterialAssets>::default(),
+            ExtractResourcePlugin::<SolariSky>::default(),
+        ));
 
         let render_app = app.sub_app_mut(RenderApp);
 

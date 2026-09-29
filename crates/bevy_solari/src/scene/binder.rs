@@ -1,4 +1,4 @@
-use super::{blas::BlasManager, extract::StandardMaterialAssets, RaytracingMesh3d};
+use super::{blas::BlasManager, extract::StandardMaterialAssets, RaytracingMesh3d, SolariSky};
 use bevy_asset::{AssetId, Handle};
 use bevy_color::{ColorToComponents, LinearRgba};
 use bevy_ecs::{
@@ -6,7 +6,7 @@ use bevy_ecs::{
     resource::Resource,
     system::{Query, Res, ResMut},
 };
-use bevy_math::{ops::cos, Mat4, Vec3};
+use bevy_math::{ops::cos, Mat4, Vec3, Vec4};
 use bevy_material::AlphaMode;
 use bevy_pbr::{
     DfgLut, ExtractedDirectionalLight, MeshMaterial3d, PreviousGlobalTransform, StandardMaterial,
@@ -50,6 +50,7 @@ pub fn prepare_raytracing_scene_bindings(
     texture_assets: Res<RenderAssets<GpuImage>>,
     fallback_texture: Res<FallbackImage>,
     dfg_lut: Res<DfgLut>,
+    sky: Option<Res<SolariSky>>,
     render_device: Res<RenderDevice>,
     pipeline_cache: Res<PipelineCache>,
     render_queue: Res<RenderQueue>,
@@ -266,6 +267,13 @@ pub fn prepare_raytracing_scene_bindings(
     light_sources.write_buffer(&render_device, &render_queue);
     directional_lights.write_buffer(&render_device, &render_queue);
     previous_frame_light_id_translations.write_buffer(&render_device, &render_queue);
+    let sky = sky.map(|s| *s).unwrap_or_default();
+    let mut sky_buffer = StorageBuffer::from(GpuSky {
+        zenith: sky.zenith.to_vec4(),
+        horizon: sky.horizon.to_vec4(),
+        ground: sky.ground.to_vec4(),
+    });
+    sky_buffer.write_buffer(&render_device, &render_queue);
 
     let mut command_encoder = render_device.create_command_encoder(&CommandEncoderDescriptor {
         label: Some("build_tlas_command_encoder"),
@@ -300,6 +308,7 @@ pub fn prepare_raytracing_scene_bindings(
             previous_frame_light_id_translations.binding().unwrap(),
             dfg_view,
             dfg_sampler,
+            sky_buffer.binding().unwrap(),
         )),
     ));
 }
@@ -329,6 +338,8 @@ impl RaytracingSceneBindings {
                         storage_buffer_read_only_sized(false, None),
                         texture_2d(TextureSampleType::Float { filterable: true }),
                         sampler(SamplerBindingType::Filtering),
+                        // Storage, not uniform: a bind group with binding arrays may not hold a uniform.
+                        storage_buffer_read_only_sized(false, None),
                     ),
                 ),
             ),
@@ -404,6 +415,13 @@ struct GpuMaterial {
     diffuse_transmission: f32,
     _padding: f32,
     reflectance: f32,
+}
+
+#[derive(ShaderType)]
+struct GpuSky {
+    zenith: Vec4,
+    horizon: Vec4,
+    ground: Vec4,
 }
 
 #[derive(ShaderType)]

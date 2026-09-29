@@ -21,3 +21,39 @@ use derive_more::derive::From;
 #[reflect(Component, Default, Clone, PartialEq)]
 #[require(MeshMaterial3d<StandardMaterial>, Transform, SyncToRenderWorld)]
 pub struct RaytracingMesh3d(pub Handle<Mesh>);
+
+/// The sky's light, for rays that leave the scene.
+///
+/// Without it a ray that hits nothing brings back nothing, and only the directional lights and
+/// emissive meshes light the scene: shade under a roof or a tree is lit by bounce light alone. With
+/// it, diffuse and specular indirect rays that escape return this radiance — zenith overhead, horizon
+/// at the horizon, `ground` below it — and the sky comes through every gap it can reach.
+///
+/// Radiance, in the same units as emissive (a uniform sky of radiance `L` puts `π L` on level ground).
+/// Absent, or black, is the upstream behaviour.
+#[derive(bevy_ecs::resource::Resource, Clone, Copy, Debug, Reflect)]
+#[reflect(Default, Clone)]
+pub struct SolariSky {
+    pub zenith: bevy_color::LinearRgba,
+    pub horizon: bevy_color::LinearRgba,
+    pub ground: bevy_color::LinearRgba,
+}
+
+impl Default for SolariSky {
+    /// Black: no sky (`LinearRgba`'s own default is white).
+    fn default() -> Self {
+        Self {
+            zenith: bevy_color::LinearRgba::BLACK,
+            horizon: bevy_color::LinearRgba::BLACK,
+            ground: bevy_color::LinearRgba::BLACK,
+        }
+    }
+}
+
+impl bevy_render::extract_resource::ExtractResource for SolariSky {
+    type Source = SolariSky;
+
+    fn extract_resource(source: &Self::Source) -> Self {
+        *source
+    }
+}
