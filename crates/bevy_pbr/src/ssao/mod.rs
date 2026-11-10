@@ -40,6 +40,12 @@ use core::mem;
 use tracing::{error, warn};
 
 /// Plugin for screen space ambient occlusion.
+/// **place-99: the ambient occlusion texture carries the bent normal too**: visibility in `r` (as before, so every
+/// reader of `.r` is unchanged) and the mean unoccluded direction, cosine-weighted, in view space, in `gba` — what
+/// specular occlusion is worked out from (`pbr_fragment`, `deferred_lighting`: the visibility cone about the bent
+/// normal against the reflection's cone).
+pub const AO_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
+
 pub struct ScreenSpaceAmbientOcclusionPlugin;
 
 impl Plugin for ScreenSpaceAmbientOcclusionPlugin {
@@ -366,7 +372,8 @@ impl FromWorld for SsaoPipelines {
                     texture_2d(TextureSampleType::Float { filterable: true }),
                     texture_2d(TextureSampleType::Float { filterable: false }),
                     texture_2d(TextureSampleType::Uint),
-                    texture_storage_2d(depth_format, StorageTextureAccess::WriteOnly),
+                    // place-99: visibility in `r`, the bent normal (view space) in `gba`.
+                    texture_storage_2d(AO_FORMAT, StorageTextureAccess::WriteOnly),
                     texture_storage_2d(TextureFormat::R32Uint, StorageTextureAccess::WriteOnly),
                     uniform_buffer::<GlobalsUniform>(false),
                     uniform_buffer::<f32>(false),
@@ -381,7 +388,7 @@ impl FromWorld for SsaoPipelines {
                 (
                     texture_2d(TextureSampleType::Float { filterable: false }),
                     texture_2d(TextureSampleType::Uint),
-                    texture_storage_2d(depth_format, StorageTextureAccess::WriteOnly),
+                    texture_storage_2d(AO_FORMAT, StorageTextureAccess::WriteOnly),
                 ),
             ),
         );
@@ -547,7 +554,7 @@ fn prepare_ssao_textures(
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: TextureDimension::D2,
-                format: pipelines.depth_format,
+                format: AO_FORMAT,
                 usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             },
@@ -561,7 +568,7 @@ fn prepare_ssao_textures(
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: TextureDimension::D2,
-                format: pipelines.depth_format,
+                format: AO_FORMAT,
                 usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             },

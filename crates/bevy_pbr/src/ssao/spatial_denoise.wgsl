@@ -13,14 +13,17 @@
 
 @group(0) @binding(0) var ambient_occlusion_noisy: texture_2d<f32>;
 @group(0) @binding(1) var depth_differences: texture_2d<u32>;
-#ifdef USE_R16FLOAT
-@group(0) @binding(2) var ambient_occlusion: texture_storage_2d<r16float, write>;
-#else
-@group(0) @binding(2) var ambient_occlusion: texture_storage_2d<r32float, write>;
-#endif
+// place-99: visibility and the bent normal (`AO_FORMAT`).
+@group(0) @binding(2) var ambient_occlusion: texture_storage_2d<rgba16float, write>;
 @group(1) @binding(0) var point_clamp_sampler: sampler;
 @group(1) @binding(1) var linear_clamp_sampler: sampler;
 @group(1) @binding(2) var<uniform> view: View;
+
+// place-99: a texel's bent normal, clamped to the screen.
+fn bent_at(p: vec2<i32>, dx: i32, dy: i32) -> vec3<f32> {
+    let size = vec2<i32>(textureDimensions(ambient_occlusion_noisy));
+    return textureLoad(ambient_occlusion_noisy, clamp(p + vec2<i32>(dx, dy), vec2<i32>(0), size - 1), 0).gba;
+}
 
 @compute
 @workgroup_size(8, 8, 1)
@@ -85,5 +88,14 @@ fn spatial_denoise(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let denoised_visibility = sum / sum_weight;
 
-    textureStore(ambient_occlusion, pixel_coordinates, vec4<f32>(denoised_visibility, 0.0, 0.0, 0.0));
+    // place-99: the bent normal, by the same weights over the same nine texels.
+    let p = pixel_coordinates;
+    var bent = bent_at(p, 0, 0) * center_weight;
+    bent += bent_at(p, -1, 0) * left_weight + bent_at(p, 1, 0) * right_weight;
+    bent += bent_at(p, 0, -1) * top_weight + bent_at(p, 0, 1) * bottom_weight;
+    bent += bent_at(p, -1, -1) * top_left_weight + bent_at(p, 1, -1) * top_right_weight;
+    bent += bent_at(p, -1, 1) * bottom_left_weight + bent_at(p, 1, 1) * bottom_right_weight;
+    let bent_normal = bent / max(length(bent), 1e-5);
+
+    textureStore(ambient_occlusion, pixel_coordinates, vec4<f32>(denoised_visibility, bent_normal));
 }

@@ -10,7 +10,8 @@
 
 #ifdef SCREEN_SPACE_AMBIENT_OCCLUSION
 #import bevy_pbr::mesh_view_bindings::screen_space_ambient_occlusion_texture
-#import bevy_pbr::ssao_utils::ssao_multibounce
+#import bevy_pbr::ssao_utils::{ssao_multibounce, specular_occlusion_cones}
+#import bevy_pbr::view_transformations::direction_view_to_world
 #endif
 
 struct FullscreenVertexOutput {
@@ -63,7 +64,8 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     if ((pbr_input.material.flags & STANDARD_MATERIAL_FLAGS_UNLIT_BIT) == 0u) {
 
 #ifdef SCREEN_SPACE_AMBIENT_OCCLUSION
-        let ssao = textureLoad(screen_space_ambient_occlusion_texture, vec2<i32>(in.position.xy), 0i).r;
+        let ao_sample = textureLoad(screen_space_ambient_occlusion_texture, vec2<i32>(in.position.xy), 0i);
+        let ssao = ao_sample.r;
         let ssao_multibounce = ssao_multibounce(ssao, pbr_input.material.base_color.rgb);
         pbr_input.diffuse_occlusion = min(pbr_input.diffuse_occlusion, ssao_multibounce);
 
@@ -73,7 +75,10 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
         let roughness = lighting::perceptualRoughnessToRoughness(perceptual_roughness);
         // Use SSAO to estimate the specular occlusion.
         // Lagarde and Rousiers 2014, "Moving Frostbite to Physically Based Rendering"
-        pbr_input.specular_occlusion =  saturate(pow(NdotV + ssao, exp2(-16.0 * roughness - 1.0)) - 1.0 + ssao);
+        // place-99: from the bent normal instead (`ssao_utils::specular_occlusion_cones`).
+        let bent_world = direction_view_to_world(ao_sample.gba);
+        let bent_normal = select(pbr_input.N, normalize(bent_world), dot(bent_world, bent_world) > 1e-6);
+        pbr_input.specular_occlusion = specular_occlusion_cones(ssao, bent_normal, reflect(-pbr_input.V, pbr_input.N), roughness);
 #endif // SCREEN_SPACE_AMBIENT_OCCLUSION
 
         output_color = pbr_functions::apply_pbr_lighting(pbr_input);

@@ -17,7 +17,8 @@
 
 #ifdef SCREEN_SPACE_AMBIENT_OCCLUSION
 #import bevy_pbr::mesh_view_bindings::screen_space_ambient_occlusion_texture
-#import bevy_pbr::ssao_utils::ssao_multibounce
+#import bevy_pbr::ssao_utils::{ssao_multibounce, specular_occlusion_cones}
+#import bevy_pbr::view_transformations::direction_view_to_world
 #endif
 
 #ifdef MESHLET_MESH_MATERIAL_PASS
@@ -659,8 +660,8 @@ pbr_input.material.uv_transform = uv_transform;
         let ssao = textureLoad(screen_space_ambient_occlusion_texture, vec2<i32>(in.position.xy), 0i).r;
         let ssao_multibounce = ssao_multibounce(ssao, pbr_input.material.base_color.rgb);
         diffuse_occlusion = min(diffuse_occlusion, ssao_multibounce);
-        // Use SSAO to estimate the specular occlusion.
-        // Lagarde and Rousiers 2014, "Moving Frostbite to Physically Based Rendering"
+        // place-99: specular occlusion from the bent normal, below, once the normal is final (it is normal-mapped
+        // after this). Meanwhile, the Lagarde estimate (Lagarde and Rousiers 2014).
         let roughness = lighting::perceptualRoughnessToRoughness(pbr_input.material.perceptual_roughness);
         specular_occlusion = saturate(pow(NdotV + ssao, exp2(-16.0 * roughness - 1.0)) - 1.0 + ssao);
 #endif
@@ -758,6 +759,18 @@ pbr_input.material.uv_transform = uv_transform;
 
 #endif  // VERTEX_TANGENTS
 #endif  // VERTEX_UVS
+
+#ifdef SCREEN_SPACE_AMBIENT_OCCLUSION
+        // place-99: the visibility cone about the bent normal against the reflection's cone (`ssao_utils`).
+        {
+            let ao_sample = textureLoad(screen_space_ambient_occlusion_texture, vec2<i32>(in.position.xy), 0i);
+            let bent_world = direction_view_to_world(ao_sample.gba);
+            let bent_normal = select(pbr_input.N, normalize(bent_world), dot(bent_world, bent_world) > 1e-6);
+            let R = reflect(-pbr_input.V, pbr_input.N);
+            let alpha = lighting::perceptualRoughnessToRoughness(pbr_input.material.perceptual_roughness);
+            pbr_input.specular_occlusion = specular_occlusion_cones(ao_sample.r, bent_normal, R, alpha);
+        }
+#endif
 
         // Take anisotropy into account.
         //

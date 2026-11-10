@@ -21,11 +21,8 @@
 @group(0) @binding(0) var preprocessed_depth: texture_2d<f32>;
 @group(0) @binding(1) var normals: texture_2d<f32>;
 @group(0) @binding(2) var hilbert_index_lut: texture_2d<u32>;
-#ifdef USE_R16FLOAT
-@group(0) @binding(3) var ambient_occlusion: texture_storage_2d<r16float, write>;
-#else
-@group(0) @binding(3) var ambient_occlusion: texture_storage_2d<r32float, write>;
-#endif
+// place-99: visibility in `r`, the bent normal (view space) in `gba` (`AO_FORMAT`).
+@group(0) @binding(3) var ambient_occlusion: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(4) var depth_differences: texture_storage_2d<r32uint, write>;
 @group(0) @binding(5) var<uniform> globals: Globals;
 @group(0) @binding(6) var<uniform> thickness: f32;
@@ -155,6 +152,12 @@ fn ssao(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     var visibility = 0.0;
     var occluded_sample_count = 0u;
+    // place-99: **the bent normal**, the cosine-weighted mean of the directions no sample occludes. A sector of the
+    // slice at `x` in 0..1 is the direction `(x - 0.5) * PI` from the projected normal (x = 0.5) toward the slice's
+    // direction (`processSample` lays the horizons out so), so each unoccluded one adds its direction, weighted by its
+    // cosine to the normal and by the slice's projected-normal length (GTAO's slice weight).
+    var bent = vec3<f32>(0.0);
+    let sectors = u32(samples_per_slice_side * 2.0);
     for (var slice_t = 0.0; slice_t < slice_count; slice_t += 1.0) {
         let slice = slice_t + noise.x;
         let phi = (PI / slice_count) * slice;
@@ -194,11 +197,25 @@ fn ssao(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
 
         occluded_sample_count += countOneBits(bitmask);
+
+        let slice_normal = projected_normal / max(projected_normal_length, 1e-5);
+        let toward = orthographic_direction - slice_normal * dot(orthographic_direction, slice_normal);
+        let slice_tangent = toward / max(length(toward), 1e-5);
+        for (var k = 0u; k < sectors; k += 1u) {
+            if (((bitmask >> k) & 1u) != 0u) {
+                continue;
+            }
+            let psi = ((f32(k) + 0.5) / f32(sectors) - 0.5) * PI;
+            let c = cos(psi);
+            bent += (slice_normal * c + slice_tangent * sin(psi)) * c * projected_normal_length;
+        }
     }
+    let bent_length = length(bent);
+    let bent_normal = select(pixel_normal, bent / max(bent_length, 1e-5), bent_length > 1e-4);
 
     visibility = 1.0 - f32(occluded_sample_count) / (slice_count * 2.0 * samples_per_slice_side);
 
     visibility = clamp(visibility, 0.03, 1.0);
 
-    textureStore(ambient_occlusion, pixel_coordinates, vec4<f32>(visibility, 0.0, 0.0, 0.0));
+    textureStore(ambient_occlusion, pixel_coordinates, vec4<f32>(visibility, bent_normal));
 }
