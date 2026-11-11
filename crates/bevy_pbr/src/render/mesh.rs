@@ -94,7 +94,7 @@ use crate::{
     *,
 };
 use bevy_core_pipeline::oit::OrderIndependentTransparencySettings;
-use bevy_core_pipeline::prepass::{DeferredPrepass, DepthPrepass, NormalPrepass};
+use bevy_core_pipeline::prepass::{DeferredPrepass, DepthPrepass, ForwardGbuffer, NormalPrepass};
 use bevy_core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy_render::camera::{DirtySpecializations, ExtractedCamera, TemporalJitter};
 use bevy_render::prelude::Msaa;
@@ -370,6 +370,7 @@ pub fn check_views_need_specialization(
             Has<DepthPrepass>,
             Has<MotionVectorPrepass>,
             Has<DeferredPrepass>,
+            Has<ForwardGbuffer>,
         ),
         Option<&ScreenSpaceTransmission>,
         Has<TemporalJitter>,
@@ -394,7 +395,7 @@ pub fn check_views_need_specialization(
         (tonemapping, dither),
         shadow_filter_method,
         ssao,
-        (normal_prepass, depth_prepass, motion_vector_prepass, deferred_prepass),
+        (normal_prepass, depth_prepass, motion_vector_prepass, deferred_prepass, forward_gbuffer),
         transmission,
         temporal_jitter,
         projection,
@@ -436,6 +437,10 @@ pub fn check_views_need_specialization(
 
         if has_ssr {
             view_key |= MeshPipelineKey::SCREEN_SPACE_REFLECTIONS;
+        }
+
+        if forward_gbuffer {
+            view_key |= MeshPipelineKey::FORWARD_GBUFFER;
         }
 
         if has_oit {
@@ -3022,7 +3027,8 @@ bitflags::bitflags! {
         const INVERT_CULLING                    = 1 << 22;
         const PREPASS_READS_MATERIAL            = 1 << 23;
         const CONTACT_SHADOWS                   = 1 << 24;
-        const LAST_FLAG                         = Self::CONTACT_SHADOWS.bits();
+        const FORWARD_GBUFFER                   = 1 << 25; // place-99: forward materials write the G-buffer (`ForwardGbuffer`)
+        const LAST_FLAG                         = Self::FORWARD_GBUFFER.bits();
 
         const ALL_PREPASS_BITS                  = Self::DEPTH_PREPASS.bits()
                                                 | Self::NORMAL_PREPASS.bits()
@@ -3380,6 +3386,16 @@ impl SpecializedMeshPipeline for MeshPipeline {
 
         let (label, blend, depth_write_enabled);
         let pass = key.intersection(MeshPipelineKey::BLEND_RESERVED_BITS);
+
+        // place-99: a forward opaque material on a `ForwardGbuffer` camera is in the G-buffer, so the SSR
+        // pass after the opaque pass adds its environment-map specular (or what SSR finds instead). Leave
+        // that term out here, as the deferred lighting pass does, or it is counted twice.
+        if key.contains(MeshPipelineKey::FORWARD_GBUFFER | MeshPipelineKey::SCREEN_SPACE_REFLECTIONS)
+            && pass == MeshPipelineKey::BLEND_OPAQUE
+            && !key.contains(MeshPipelineKey::READS_VIEW_TRANSMISSION_TEXTURE)
+        {
+            shader_defs.push("SCREEN_SPACE_REFLECTIONS".into());
+        }
         let (mut is_opaque, mut alpha_to_coverage_enabled) = (false, false);
         if key.contains(MeshPipelineKey::OIT_ENABLED) && pass == MeshPipelineKey::BLEND_ALPHA {
             label = "oit_mesh_pipeline".into();

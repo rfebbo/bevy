@@ -86,7 +86,7 @@ use crate::{
         DEFERRED_PREPASS_FORMAT,
     },
     prepass::{
-        AlphaMask3dPrepass, DeferredPrepass, DeferredPrepassDoubleBuffer, DepthPrepass,
+        AlphaMask3dPrepass, DeferredPrepass, DeferredPrepassDoubleBuffer, DepthPrepass, ForwardGbuffer,
         DepthPrepassDoubleBuffer, MotionVectorPrepass, NormalPrepass, Opaque3dPrepass,
         OpaqueNoLightmap3dBatchSetKey, OpaqueNoLightmap3dBinKey, ViewPrepassTextures,
         MOTION_VECTOR_PREPASS_FORMAT, NORMAL_PREPASS_FORMAT,
@@ -552,6 +552,7 @@ pub fn extract_camera_prepass_phase(
                 Has<DeferredPrepass>,
                 Has<DepthPrepassDoubleBuffer>,
                 Has<DeferredPrepassDoubleBuffer>,
+                Has<ForwardGbuffer>,
             ),
             With<Camera3d>,
         >,
@@ -572,6 +573,7 @@ pub fn extract_camera_prepass_phase(
         deferred_prepass,
         depth_prepass_double_buffer,
         deferred_prepass_double_buffer,
+        forward_gbuffer,
     ) in cameras_3d.iter()
     {
         if !camera.is_active {
@@ -650,6 +652,12 @@ pub fn extract_camera_prepass_phase(
             camera_commands.insert(DeferredPrepassDoubleBuffer);
         } else {
             camera_commands.remove::<DeferredPrepassDoubleBuffer>();
+        }
+
+        if forward_gbuffer {
+            camera_commands.insert(ForwardGbuffer);
+        } else {
+            camera_commands.remove::<ForwardGbuffer>();
         }
     }
 

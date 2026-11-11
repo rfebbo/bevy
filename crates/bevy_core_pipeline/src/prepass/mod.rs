@@ -83,6 +83,16 @@ pub struct MotionVectorPrepass;
 #[reflect(Component, Default)]
 pub struct DeferredPrepass;
 
+/// **Forward materials write the deferred G-buffer too** (place-99). With this on a camera, a material
+/// drawn forward is also drawn into the [`DeferredPrepass`]'s G-buffer, and is still lit by the forward
+/// (clustered) pass as before. This is for passes that read the G-buffer, such as screen-space
+/// reflections, without the camera having to go deferred. Pair it with `SkipDeferredLighting`, or the
+/// deferred lighting pass shades every pixel only for the forward pass to shade it again.
+#[derive(Component, Default, Reflect, Clone)]
+#[reflect(Component, Default, Clone)]
+#[require(DeferredPrepass, DepthPrepass)]
+pub struct ForwardGbuffer;
+
 /// Allows querying the previous frame's [`DepthPrepass`].
 #[derive(Component, Default, Reflect, Clone)]
 #[reflect(Component, Default, Clone)]

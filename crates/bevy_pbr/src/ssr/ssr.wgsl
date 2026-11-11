@@ -137,6 +137,16 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     // Don't do anything if the surface is too rough or too smooth
     let perceptual_roughness = pbr_input.material.perceptual_roughness;
 
+    // place-99: only where the lit pass left the specular to us (`use_ssr` in `pbr_functions`), and not
+    // the sky (nothing in the G-buffer, depth at the far plane). Elsewhere the environment map's
+    // specular is already in `fragment`, and adding it again doubled it — on every sky pixel too, once
+    // SSR ran after the skybox for forward cameras.
+    if (frag_coord.z == 0.0
+        || perceptual_roughness > ssr_settings.max_perceptual_roughness
+        || perceptual_roughness < ssr_settings.min_perceptual_roughness) {
+        return fragment;
+    }
+
     var min_fade: f32;
     if (ssr_settings.min_perceptual_roughness >= ssr_settings.min_perceptual_roughness_fully_active) {
         min_fade = step(ssr_settings.min_perceptual_roughness, perceptual_roughness);

@@ -874,6 +874,7 @@ pub(crate) struct SpecializePrepassSystemParam<'w, 's> {
             &'static Msaa,
             Option<&'static MotionVectorPrepass>,
             Option<&'static DeferredPrepass>,
+            Has<ForwardGbuffer>,
         ),
     >,
     opaque_prepass_render_phases: Res<'w, ViewBinnedRenderPhases<Opaque3dPrepass>>,
@@ -922,7 +923,7 @@ pub(crate) fn specialize_prepass_material_meshes(
 
         this_run = system_change_tick.this_run();
 
-        for (extracted_view, visible_entities, msaa, motion_vector_prepass, deferred_prepass) in
+        for (extracted_view, visible_entities, msaa, motion_vector_prepass, deferred_prepass, forward_gbuffer) in
             &views
         {
             if !opaque_deferred_render_phases.contains_key(&extracted_view.retained_view_entity)
@@ -1052,7 +1053,8 @@ pub(crate) fn specialize_prepass_material_meshes(
                     OpaqueRendererMethod::Auto => unreachable!(),
                 };
 
-                let deferred = deferred_prepass.is_some() && !forward;
+                // `ForwardGbuffer`: a forward material writes the G-buffer as well (it is still lit forward).
+                let deferred = deferred_prepass.is_some() && (!forward || forward_gbuffer);
 
                 if deferred {
                     mesh_key |= MeshPipelineKey::DEFERRED_PREPASS;
@@ -1195,12 +1197,12 @@ pub fn queue_prepass_material_meshes(
     mut alpha_mask_prepass_render_phases: ResMut<ViewBinnedRenderPhases<AlphaMask3dPrepass>>,
     mut opaque_deferred_render_phases: ResMut<ViewBinnedRenderPhases<Opaque3dDeferred>>,
     mut alpha_mask_deferred_render_phases: ResMut<ViewBinnedRenderPhases<AlphaMask3dDeferred>>,
-    views: Query<(&ExtractedView, &RenderVisibleEntities)>,
+    views: Query<(&ExtractedView, &RenderVisibleEntities, Has<ForwardGbuffer>)>,
     specialized_material_pipeline_cache: Res<SpecializedPrepassMaterialPipelineCache>,
     mut pending_prepass_mesh_material_queues: ResMut<PendingPrepassMeshMaterialQueues>,
     dirty_specializations: Res<DirtySpecializations>,
 ) {
-    for (extracted_view, visible_entities) in &views {
+    for (extracted_view, visible_entities, forward_gbuffer) in &views {
         let (
             mut opaque_phase,
             mut alpha_mask_phase,
@@ -1299,11 +1301,12 @@ pub fn queue_prepass_material_meshes(
                 continue;
             };
 
-            let deferred = match material.properties.render_method {
-                OpaqueRendererMethod::Forward => false,
-                OpaqueRendererMethod::Deferred => true,
-                OpaqueRendererMethod::Auto => unreachable!(),
-            };
+            let deferred = forward_gbuffer
+                || match material.properties.render_method {
+                    OpaqueRendererMethod::Forward => false,
+                    OpaqueRendererMethod::Deferred => true,
+                    OpaqueRendererMethod::Auto => unreachable!(),
+                };
 
             match material.properties.render_phase_type {
                 RenderPhaseType::Opaque => {

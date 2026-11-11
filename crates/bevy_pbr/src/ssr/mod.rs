@@ -5,8 +5,8 @@ use core::ops::Range;
 use bevy_app::{App, Plugin};
 use bevy_asset::{load_embedded_asset, AssetServer, Handle};
 use bevy_core_pipeline::{
-    core_3d::{main_opaque_pass_3d, DEPTH_PREPASS_TEXTURE_SUPPORTED},
-    prepass::{DeferredPrepass, DepthPrepass},
+    core_3d::{main_opaque_pass_3d, main_transparent_pass_3d, DEPTH_PREPASS_TEXTURE_SUPPORTED},
+    prepass::{DeferredPrepass, DepthPrepass, ForwardGbuffer},
     schedule::{Core3d, Core3dSystems},
     FullscreenShader,
 };
@@ -215,10 +215,19 @@ impl Plugin for ScreenSpaceReflectionsPlugin {
             )
             .add_systems(
                 Core3d,
-                screen_space_reflections
-                    .after(deferred_lighting)
-                    .before(main_opaque_pass_3d)
-                    .in_set(Core3dSystems::MainPass),
+                (
+                    screen_space_reflections::<false>
+                        .after(deferred_lighting)
+                        .before(main_opaque_pass_3d)
+                        .in_set(Core3dSystems::MainPass),
+                    // place-99: a `ForwardGbuffer` camera is lit in the opaque pass, so SSR follows it
+                    // (and comes before transmission, which copies what the opaque pass made).
+                    screen_space_reflections::<true>
+                        .after(main_opaque_pass_3d)
+                        .before(crate::transmission::main_transmissive_pass_3d)
+                        .before(main_transparent_pass_3d)
+                        .in_set(Core3dSystems::MainPass),
+                ),
             );
     }
 }
@@ -242,11 +251,13 @@ impl Default for ScreenSpaceReflections {
     }
 }
 
-pub fn screen_space_reflections(
+/// `FORWARD`: the instance for `ForwardGbuffer` cameras, run after the opaque pass rather than before it.
+pub fn screen_space_reflections<const FORWARD: bool>(
     view: ViewQuery<(
         &ViewTarget,
         &MeshViewBindGroup,
         &ScreenSpaceReflectionsPipelineId,
+        Has<ForwardGbuffer>,
     )>,
     pipeline_cache: Res<PipelineCache>,
     ssr_pipeline: Res<ScreenSpaceReflectionsPipeline>,
@@ -254,7 +265,10 @@ pub fn screen_space_reflections(
     render_images: Res<RenderAssets<GpuImage>>,
     mut ctx: RenderContext,
 ) {
-    let (view_target, view_bind_group, ssr_pipeline_id) = view.into_inner();
+    let (view_target, view_bind_group, ssr_pipeline_id, forward_gbuffer) = view.into_inner();
+    if forward_gbuffer != FORWARD {
+        return;
+    }
 
     // Grab the render pipeline.
     let Some(render_pipeline) = pipeline_cache.get_render_pipeline(**ssr_pipeline_id) else {
