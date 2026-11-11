@@ -257,7 +257,7 @@ pub fn screen_space_reflections<const FORWARD: bool>(
         &ViewTarget,
         &MeshViewBindGroup,
         &ScreenSpaceReflectionsPipelineId,
-        Has<ForwardGbuffer>,
+        bevy_ecs::query::Has<ForwardGbuffer>,
     )>,
     pipeline_cache: Res<PipelineCache>,
     ssr_pipeline: Res<ScreenSpaceReflectionsPipeline>,
