@@ -223,7 +223,10 @@ fn uv_to_ndc(uv: vec2<f32>) -> vec2<f32> {
 /// returns the (0.0, 0.0) .. (1.0, 1.0) position within the viewport for the current render target
 /// [0 .. render target viewport size] eg. [(0.0, 0.0) .. (1280.0, 720.0)] to [(0.0, 0.0) .. (1.0, 1.0)]
 fn frag_coord_to_uv(frag_coord: vec2<f32>) -> vec2<f32> {
-    return (frag_coord - view_bindings::view.viewport.xy) / view_bindings::view.viewport.zw;
+    // Over the main pass's rect (place-99): with an upscaler (`MainPassResolutionOverride`) the passes that call this —
+    // the deferred lighting, SSR, volumetric fog — run at render resolution, and the full viewport put every pixel's
+    // reconstructed position elsewhere. Without one the two are the same.
+    return (frag_coord - view_bindings::view.main_pass_viewport.xy) / view_bindings::view.main_pass_viewport.zw;
 }
 
 /// Convert frag coord to ndc
