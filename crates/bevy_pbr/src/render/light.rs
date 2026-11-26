@@ -8,7 +8,7 @@ use bevy_camera::visibility::{
     CascadesVisibleEntities, CubemapVisibleEntities, RenderLayers, ViewVisibility,
     VisibleMeshEntities,
 };
-use bevy_camera::{Camera, Camera3d, RenderTarget, ShadowLodOrigin};
+use bevy_camera::{Camera, Camera3d, MainPassResolutionOverride, RenderTarget, ShadowLodOrigin};
 use bevy_color::ColorToComponents;
 use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_core_pipeline::schedule::RootNonCameraView;
@@ -35,7 +35,7 @@ use bevy_material::{
 use bevy_math::{
     ops,
     primitives::{HalfSpace, ViewFrustum},
-    Mat4, UVec4, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles,
+    Mat4, UVec2, UVec4, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles,
 };
 use bevy_mesh::{Mesh3d, MeshVertexBufferLayoutRef};
 use bevy_platform::collections::{HashMap, HashSet};
@@ -1018,7 +1018,7 @@ pub fn prepare_lights(
             &ExtractedClusterConfig,
             Option<&RenderLayers>,
             Has<NoIndirectDrawing>,
-            Option<&AmbientLight>,
+            (Option<&AmbientLight>, Option<&MainPassResolutionOverride>),
         ),
         With<Camera3d>,
     >,
@@ -1361,7 +1361,7 @@ pub fn prepare_lights(
         _clusters,
         maybe_layers,
         _no_indirect_drawing,
-        _maybe_ambient_override,
+        _,
     ) in sorted_cameras
         .0
         .iter()
@@ -1637,7 +1637,7 @@ pub fn prepare_lights(
         clusters,
         maybe_layers,
         no_indirect_drawing,
-        maybe_ambient_override,
+        (maybe_ambient_override, resolution_override),
     ) in sorted_cameras
         .0
         .iter()
@@ -1656,6 +1656,10 @@ pub fn prepare_lights(
         });
 
         let is_orthographic = extracted_view.clip_from_view.w_axis.w == 1.0;
+        let main_pass_size = resolution_override
+            .map(|r| r.0)
+            .unwrap_or(extracted_view.viewport.zw())
+            .max(UVec2::ONE);
         let cluster_factors_zw = calculate_cluster_factors(
             clusters.near,
             clusters.far,
@@ -1755,9 +1759,11 @@ pub fn prepare_lights(
             directional_lights: gpu_directional_lights,
             ambient_color: Vec4::from_slice(&LinearRgba::from(ambient_light.color).to_f32_array())
                 * ambient_light.brightness,
+            // The clusters tile the main pass, which an upscaler (`MainPassResolutionOverride`) renders smaller than
+            // the viewport: fragments index them by their position in *that* rect (place-99).
             cluster_factors: Vec4::new(
-                clusters.dimensions.x as f32 / extracted_view.viewport.z as f32,
-                clusters.dimensions.y as f32 / extracted_view.viewport.w as f32,
+                clusters.dimensions.x as f32 / main_pass_size.x as f32,
+                clusters.dimensions.y as f32 / main_pass_size.y as f32,
                 cluster_factors_zw.x,
                 cluster_factors_zw.y,
             ),
