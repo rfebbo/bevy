@@ -56,6 +56,13 @@ fn spatial_and_shade(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
     let surface = gpixel_resolve(textureLoad(gbuffer, global_id.xy, 0), depth, global_id.xy, view.main_pass_viewport.zw, view.world_from_clip);
+    // An unlit pixel is its colour, as the raster deferred pass draws it: no light, and not multiplied by the view's
+    // exposure, which took an unlit screen or sky at a daylight exposure (~1/10 000) to black (place-99).
+    if surface.unlit {
+        store_reservoir_a(global_id.xy, empty_reservoir());
+        textureStore(view_output, global_id.xy, vec4(surface.material.emissive, 1.0));
+        return;
+    }
 
     let diffuse_brdf = surface.material.base_color / PI;
     let input_reservoir = load_reservoir_b(global_id.xy);

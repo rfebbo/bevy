@@ -33,6 +33,10 @@ fn specular_gi(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
     let surface = gpixel_resolve(textureLoad(gbuffer, global_id.xy, 0), depth, global_id.xy, view.main_pass_viewport.zw, view.world_from_clip);
+    // An unlit pixel reflects nothing (place-99, `gbuffer_utils::ResolvedGPixel::unlit`).
+    if surface.unlit {
+        return;
+    }
 
     let wo_unnormalized = view.world_position - surface.world_position;
     let wo_length = length(wo_unnormalized);

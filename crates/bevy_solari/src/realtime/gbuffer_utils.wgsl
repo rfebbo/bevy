@@ -1,6 +1,6 @@
 #define_import_path bevy_solari::gbuffer_utils
 
-#import bevy_pbr::pbr_deferred_types::unpack_24bit_normal
+#import bevy_pbr::pbr_deferred_types::{unpack_24bit_normal, unpack_flags, DEFERRED_FLAGS_UNLIT_BIT}
 #import bevy_pbr::rgb9e5::rgb9e5_to_vec3_
 #import bevy_pbr::utils::octahedral_decode
 #import bevy_render::view::{View, depth_ndc_to_view_z}
@@ -10,6 +10,10 @@ struct ResolvedGPixel {
     world_position: vec3<f32>,
     world_normal: vec3<f32>,
     material: ResolvedMaterial,
+    // An unlit material (place-99). The G-buffer holds its colour in the emissive channel, as for the raster deferred
+    // pass, which draws it as it is: not lit, and not exposed. Solari draws such a pixel as that colour (`restir_di`)
+    // and adds no light to it (`restir_gi`, `specular_gi`).
+    unlit: bool,
 }
 
 fn gpixel_resolve(gpixel: vec4<u32>, depth: f32, pixel_id: vec2<u32>, view_size: vec2<f32>, world_from_clip: mat4x4<f32>) -> ResolvedGPixel {
@@ -26,7 +30,9 @@ fn gpixel_resolve(gpixel: vec4<u32>, depth: f32, pixel_id: vec2<u32>, view_size:
     let emissive = rgb9e5_to_vec3_(gpixel.g);
     let material = ResolvedMaterial(base_color, emissive, reflectance, perceptual_roughness, roughness, metallic);
 
-    return ResolvedGPixel(world_position, world_normal, material);
+    let unlit = (unpack_flags(gpixel.a) & DEFERRED_FLAGS_UNLIT_BIT) != 0u;
+
+    return ResolvedGPixel(world_position, world_normal, material, unlit);
 }
 
 // How far a ray from a pixel's surface starts off it, per metre from the camera (place-99). The surface is rebuilt from
