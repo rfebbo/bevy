@@ -82,7 +82,12 @@ fn query_world_cache(world_position_in: vec3<f32>, world_normal: vec3<f32>, view
             return world_cache_radiance[key].rgb;
         } else if existing_checksum == WORLD_CACHE_EMPTY_CELL {
             // Cell is empty - initialize it
-            world_cache_geometry_data[key].world_position = world_position;
+            // At the point that was asked about, not the jittered one: the jitter picks the cell (blurring the
+            // cache), but it moves the point half a cell along the tangent plane, and far from the camera a cell is
+            // tens of metres across. On a hill that put the cell's point inside the ground (every light and GI ray
+            // from it blocked: a dark cell) or out in the air, a different one each time the cell was made again,
+            // and distant terrain flickered in blotches (place-99).
+            world_cache_geometry_data[key].world_position = world_position_in;
             world_cache_geometry_data[key].world_normal = world_normal;
             return vec3(0.0);
         } else {
