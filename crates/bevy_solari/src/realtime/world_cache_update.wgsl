@@ -35,7 +35,7 @@ fn sample_di(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(global_inv
     let geometry_data = world_cache_geometry_data[cell_index];
     var rng = cell_index + constants.frame_index;
 
-    if skip_update(cell_index, &rng) { return; }
+    if rand_f(&rng) >= f32(WORLD_CACHE_CELL_UPDATES_SOFT_CAP) / f32(world_cache_active_cells_count) { return; }
 
     let new_radiance = sample_random_light_ris(geometry_data.world_position, geometry_data.world_normal, workgroup_id.xy, &rng);
 
@@ -50,7 +50,7 @@ fn sample_gi(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(global_inv
     let geometry_data = world_cache_geometry_data[cell_index];
     var rng = cell_index + constants.frame_index;
 
-    if skip_update(cell_index, &rng) { return; }
+    if rand_f(&rng) >= f32(WORLD_CACHE_CELL_UPDATES_SOFT_CAP) / f32(world_cache_active_cells_count) { return; }
 
     let ray_direction = sample_cosine_hemisphere(geometry_data.world_normal, &rng);
     let ray = trace_ray(geometry_data.world_position + (geometry_data.world_normal * RAY_T_MIN), ray_direction, RAY_T_MIN, WORLD_CACHE_MAX_GI_RAY_DISTANCE, RAY_FLAG_NONE);
@@ -73,7 +73,7 @@ fn blend_new_samples(@builtin(global_invocation_id) active_cell_id: vec3<u32>) {
     let cell_index = world_cache_active_cell_indices[active_cell_id.x];
     var rng = cell_index + constants.frame_index;
 
-    if skip_update(cell_index, &rng) { return; }
+    if rand_f(&rng) >= f32(WORLD_CACHE_CELL_UPDATES_SOFT_CAP) / f32(world_cache_active_cells_count) { return; }
 
     let old_radiance = world_cache_radiance[cell_index];
     let new_radiance = world_cache_active_cells_new_radiance[active_cell_id.x];
@@ -93,14 +93,6 @@ fn blend_new_samples(@builtin(global_invocation_id) active_cell_id: vec3<u32>) {
 
     world_cache_radiance[cell_index] = vec4(blended_radiance, sample_count);
     world_cache_luminance_deltas[cell_index] = blended_luminance_delta;
-}
-
-// Past the soft cap a cell is updated only now and then, but never a cell that has no light yet: one made since its
-// last update reads black to every ray that lands in it until it is, and far from the camera a cell is tens of metres
-// across, so a newly made one was a dark blotch on distant terrain for as many frames as it waited (place-99).
-fn skip_update(cell_index: u32, rng: ptr<function, u32>) -> bool {
-    let thinned = rand_f(rng) >= f32(WORLD_CACHE_CELL_UPDATES_SOFT_CAP) / f32(world_cache_active_cells_count);
-    return thinned && world_cache_radiance[cell_index].a != 0.0;
 }
 
 fn sample_random_light_ris(world_position: vec3<f32>, world_normal: vec3<f32>, workgroup_id: vec2<u32>, rng: ptr<function, u32>) -> vec3<f32> {
