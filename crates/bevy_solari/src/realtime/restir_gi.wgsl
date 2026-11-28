@@ -7,7 +7,7 @@ enable wgpu_ray_query;
 #import bevy_render::maths::PI
 #import bevy_render::view::View
 #import bevy_solari::brdf::evaluate_diffuse_brdf
-#import bevy_solari::gbuffer_utils::{gpixel_resolve, pixel_dissimilar, permute_pixel}
+#import bevy_solari::gbuffer_utils::{gpixel_resolve, pixel_dissimilar, permute_pixel, primary_ray_origin}
 #import bevy_solari::sampling::{sample_random_light, trace_point_visibility, balance_heuristic, isnan}
 #import bevy_solari::scene_bindings::{trace_ray, resolve_ray_hit_full, sky_radiance, RAY_T_MIN, RAY_T_MAX, SKY_SAMPLE_DISTANCE}
 #import bevy_solari::world_cache::{query_world_cache, WORLD_CACHE_CELL_LIFETIME}
@@ -72,7 +72,7 @@ fn spatial_and_shade(@builtin(global_invocation_id) global_id: vec3<u32>) {
     gi_reservoirs_a[pixel_index] = combined_reservoir;
 #endif
 
-    combined_reservoir.unbiased_contribution_weight *= trace_point_visibility(surface.world_position + (surface.world_normal * RAY_T_MIN), combined_reservoir.sample_point_world_position);
+    combined_reservoir.unbiased_contribution_weight *= trace_point_visibility(primary_ray_origin(surface.world_position, surface.world_normal, view.world_position), combined_reservoir.sample_point_world_position);
 
     // More stability, less accuracy (shadows extend further out than they should)
 #ifdef BIASED_RESAMPLING
@@ -91,7 +91,7 @@ fn generate_initial_reservoir(world_position: vec3<f32>, world_normal: vec3<f32>
     var reservoir = empty_reservoir();
 
     let ray_direction = sample_uniform_hemisphere(world_normal, rng);
-    let ray = trace_ray(world_position + (world_normal * RAY_T_MIN), ray_direction, RAY_T_MIN, RAY_T_MAX, RAY_FLAG_NONE);
+    let ray = trace_ray(primary_ray_origin(world_position, world_normal, view.world_position), ray_direction, RAY_T_MIN, RAY_T_MAX, RAY_FLAG_NONE);
 
     if ray.kind == RAY_QUERY_INTERSECTION_NONE {
         // Out to the sky: a sample point far along the ray, facing back down it.

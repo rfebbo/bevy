@@ -8,7 +8,7 @@ enable wgpu_ray_query;
 #import bevy_render::maths::{orthonormalize, PI}
 #import bevy_render::view::View
 #import bevy_solari::brdf::{evaluate_brdf, evaluate_specular_brdf}
-#import bevy_solari::gbuffer_utils::{gpixel_resolve, ResolvedGPixel}
+#import bevy_solari::gbuffer_utils::{gpixel_resolve, ResolvedGPixel, primary_ray_origin}
 #import bevy_solari::sampling::{sample_random_light, random_emissive_light_pdf, sample_ggx_vndf, ggx_vndf_pdf, ggx_vndf_sample_invalid, power_heuristic}
 #import bevy_solari::scene_bindings::{trace_ray, resolve_ray_hit_full, sky_radiance, ResolvedRayHitFull, RAY_T_MIN, RAY_T_MAX, MIRROR_ROUGHNESS_THRESHOLD}
 #import bevy_solari::world_cache::{query_world_cache, get_cell_size, WORLD_CACHE_CELL_LIFETIME}
@@ -83,7 +83,7 @@ fn trace_glossy_path(pixel_id: vec2<u32>, primary_surface: ResolvedGPixel, initi
     var radiance = vec3(0.0);
     var throughput = vec3(1.0);
 
-    var ray_origin = primary_surface.world_position + (primary_surface.world_normal * RAY_T_MIN);
+    var ray_origin = primary_ray_origin(primary_surface.world_position, primary_surface.world_normal, view.world_position);
     var wi = initial_wi;
     var p_bounce = initial_p_bounce;
     var path_roughness = primary_surface.material.roughness;

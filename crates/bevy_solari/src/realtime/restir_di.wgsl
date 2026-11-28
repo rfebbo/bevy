@@ -9,7 +9,7 @@ enable wgpu_ray_query;
 #import bevy_render::maths::PI
 #import bevy_render::view::View
 #import bevy_solari::brdf::{evaluate_diffuse_brdf, evaluate_specular_brdf}
-#import bevy_solari::gbuffer_utils::{gpixel_resolve, pixel_dissimilar, permute_pixel}
+#import bevy_solari::gbuffer_utils::{gpixel_resolve, pixel_dissimilar, permute_pixel, primary_ray_origin}
 #import bevy_solari::presample_light_tiles::unpack_resolved_light_sample
 #import bevy_solari::sampling::{LightSample, ResolvedLightSample, NULL_LIGHT_ID, calculate_resolved_light_contribution, resolve_and_calculate_light_contribution, resolve_light_sample, trace_light_visibility, balance_heuristic}
 #import bevy_solari::scene_bindings::{light_sources, previous_frame_light_id_translations, LIGHT_NOT_PRESENT_THIS_FRAME, RAY_T_MIN}
@@ -70,7 +70,7 @@ fn spatial_and_shade(@builtin(global_invocation_id) global_id: vec3<u32>) {
 #endif
 
     if reservoir_valid(combined_reservoir) {
-        combined_reservoir.unbiased_contribution_weight *= trace_light_visibility(surface.world_position + (surface.world_normal * RAY_T_MIN), merge_result.selected_light_world_position);
+        combined_reservoir.unbiased_contribution_weight *= trace_light_visibility(primary_ray_origin(surface.world_position, surface.world_normal, view.world_position), merge_result.selected_light_world_position);
     }
 
     // More stability, less accuracy (shadows extend further out than they should)
@@ -128,7 +128,7 @@ fn generate_initial_reservoir(world_position: vec3<f32>, world_normal: vec3<f32>
         let inverse_target_function = select(0.0, 1.0 / reservoir_target_function, reservoir_target_function > 0.0);
         reservoir.unbiased_contribution_weight = weight_sum * inverse_target_function;
 
-        reservoir.unbiased_contribution_weight *= trace_light_visibility(world_position + (world_normal * RAY_T_MIN), light_sample_world_position);
+        reservoir.unbiased_contribution_weight *= trace_light_visibility(primary_ray_origin(world_position, world_normal, view.world_position), light_sample_world_position);
     }
 
     reservoir.confidence_weight = 1.0;

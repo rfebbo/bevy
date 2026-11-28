@@ -4,7 +4,7 @@
 #import bevy_pbr::rgb9e5::rgb9e5_to_vec3_
 #import bevy_pbr::utils::octahedral_decode
 #import bevy_render::view::{View, depth_ndc_to_view_z}
-#import bevy_solari::scene_bindings::ResolvedMaterial
+#import bevy_solari::scene_bindings::{ResolvedMaterial, RAY_T_MIN}
 
 struct ResolvedGPixel {
     world_position: vec3<f32>,
@@ -27,6 +27,18 @@ fn gpixel_resolve(gpixel: vec4<u32>, depth: f32, pixel_id: vec2<u32>, view_size:
     let material = ResolvedMaterial(base_color, emissive, reflectance, perceptual_roughness, roughness, metallic);
 
     return ResolvedGPixel(world_position, world_normal, material);
+}
+
+// How far a ray from a pixel's surface starts off it, per metre from the camera (place-99). The surface is rebuilt from
+// the depth buffer and the view's matrices in f32, and drawn and traced through different f32 transforms, so the point
+// lands up to a few parts in ten million of its distance off the traced triangle. RAY_T_MIN (1 mm) covers that only
+// to a kilometre or two; past it, rays from distant hills began inside their own ground often enough that their light
+// came and went with each frame's jitter, and far terrain shimmered. 1e-5 is 1 mm at 100 m and 5 cm at 5 km.
+const PRIMARY_RAY_OFFSET_PER_M: f32 = 1e-5;
+
+fn primary_ray_origin(world_position: vec3<f32>, world_normal: vec3<f32>, view_position: vec3<f32>) -> vec3<f32> {
+    let offset = max(RAY_T_MIN, distance(view_position, world_position) * PRIMARY_RAY_OFFSET_PER_M);
+    return world_position + world_normal * offset;
 }
 
 fn reconstruct_world_position(pixel_id: vec2<u32>, depth: f32, view_size: vec2<f32>, world_from_clip: mat4x4<f32>) -> vec3<f32> {
