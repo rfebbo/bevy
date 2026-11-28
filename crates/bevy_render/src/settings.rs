@@ -229,14 +229,18 @@ pub enum RenderCreation {
 
 impl RenderCreation {
     /// Function to create a [`RenderCreation::Manual`] variant.
+    ///
+    /// (place-99) The same five arguments whatever features are on: with `raw_vulkan_init` the renderer is given no
+    /// additional Vulkan features (a renderer made elsewhere, e.g. by OpenXR, did not ask for them). Use
+    /// [`RenderCreation::manual_with_vulkan_features`] to give it some. Upstream adds a sixth argument under that
+    /// feature, so a crate that calls this (bevy_mod_openxr) compiled or not depending on whether something else in the
+    /// build — DLSS — had turned the feature on.
     pub fn manual(
         device: RenderDevice,
         queue: RenderQueue,
         adapter_info: RenderAdapterInfo,
         adapter: RenderAdapter,
         instance: RenderInstance,
-        #[cfg(feature = "raw_vulkan_init")]
-        additional_vulkan_features: renderer::raw_vulkan_init::AdditionalVulkanFeatures,
     ) -> Self {
         RenderResources(
             device,
@@ -245,9 +249,22 @@ impl RenderCreation {
             adapter,
             instance,
             #[cfg(feature = "raw_vulkan_init")]
-            additional_vulkan_features,
+            Default::default(),
         )
         .into()
+    }
+
+    /// [`RenderCreation::manual`], with the additional Vulkan features the device was created with.
+    #[cfg(feature = "raw_vulkan_init")]
+    pub fn manual_with_vulkan_features(
+        device: RenderDevice,
+        queue: RenderQueue,
+        adapter_info: RenderAdapterInfo,
+        adapter: RenderAdapter,
+        instance: RenderInstance,
+        additional_vulkan_features: renderer::raw_vulkan_init::AdditionalVulkanFeatures,
+    ) -> Self {
+        RenderResources(device, queue, adapter_info, adapter, instance, additional_vulkan_features).into()
     }
 
     /// Creates [`RenderResources`] from this [`RenderCreation`] and an optional primary window
